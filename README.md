@@ -1,4 +1,5 @@
 # Academic Author Network MCP Server
+[![smithery badge](https://smithery.ai/badge/@alperenkocyigit/authorprofilemcp)](https://smithery.ai/server/@alperenkocyigit/authorprofilemcp)
 
 A Model Context Protocol (MCP) server for analyzing academic author networks and research collaborations.
 
@@ -9,6 +10,15 @@ A Model Context Protocol (MCP) server for analyzing academic author networks and
 
 ## Installation
 
+### Installing via Smithery
+
+To install authorprofilemcp for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@alperenkocyigit/authorprofilemcp):
+
+```bash
+npx -y @smithery/cli install @alperenkocyigit/authorprofilemcp --client claude
+```
+
+### Manual Installation
 1. Clone or download this repository
 2. Create a virtual environment:
    ```bash
