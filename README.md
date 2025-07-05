@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/alperenkocyigit-authorprofilemcp-badge.png)](https://mseep.ai/app/alperenkocyigit-authorprofilemcp)
+
 # Academic Author Network MCP Server
 
 A Model Context Protocol (MCP) server for analyzing academic author networks and research collaborations.
