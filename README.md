@@ -1,5 +1,7 @@
 # Academic Author Network MCP Server
 
+[![smithery badge](https://smithery.ai/badge/@alperenkocyigit/authorprofilemcp)](https://smithery.ai/server/@alperenkocyigit/authorprofilemcp)
+
 A Model Context Protocol (MCP) server for analyzing academic author networks and research collaborations.
 
 ## Features
