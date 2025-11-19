@@ -2,6 +2,9 @@ requests
 beautifulsoup4
 mcp
 aiohttp
+aiohttp[speedups]
 lxml
-asyncio
 typing-extensions
+fastapi
+uvicorn
+certifi

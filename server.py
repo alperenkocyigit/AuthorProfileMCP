@@ -1,6 +1,7 @@
 from typing import Any, List, Dict, Optional
-import asyncio
 import logging
+import os
+import uvicorn
 from mcp.server.fastmcp import FastMCP
 from search import AuthorSearchEngine
 
@@ -8,11 +9,15 @@ from search import AuthorSearchEngine
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize FastMCP server
+# Initialize FastMCP server for HTTP transport
+# Port will be set from environment variable when running
 mcp = FastMCP("authorProfile")
 
 # Initialize search engine
 search_engine = AuthorSearchEngine()
+
+# Add health check endpoint for Smithery
+# Note: Health check will be handled by FastMCP's built-in capabilities
 
 @mcp.tool()
 async def get_coauthors(
@@ -104,5 +109,19 @@ async def get_author_keywords(
         }
 
 if __name__ == "__main__":
-    # Run the MCP server
-    mcp.run()
+    # Get transport mode from environment
+    transport = os.getenv("TRANSPORT", "stdio")
+    
+    if transport == "http":
+        # HTTP mode for Smithery deployment
+        port = int(os.getenv("PORT", 8081))
+        host = os.getenv("HOST", "0.0.0.0")
+        
+        logger.info(f"Starting HTTP server on {host}:{port}")
+        # Access the FastAPI app instance from FastMCP
+        app = mcp.streamable_http_app
+        uvicorn.run(app, host=host, port=port)
+    else:
+        # STDIO mode for local development
+        logger.info("Starting STDIO server")
+        mcp.run()

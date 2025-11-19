@@ -1,5 +1,6 @@
 import asyncio
 import aiohttp
+import ssl
 import json
 import time
 import hashlib
@@ -29,7 +30,26 @@ class AuthorSearchEngine:
         }
         
     async def __aenter__(self):
-        self.session = aiohttp.ClientSession()
+        # Create SSL context that handles certificate issues
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        
+        # Configure timeout settings
+        timeout = aiohttp.ClientTimeout(total=30, connect=10)
+        
+        # Create connector with SSL context
+        connector = aiohttp.TCPConnector(
+            ssl=ssl_context,
+            limit=100,
+            limit_per_host=10,
+            enable_cleanup_closed=True
+        )
+        
+        self.session = aiohttp.ClientSession(
+            connector=connector,
+            timeout=timeout
+        )
         return self
         
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -56,7 +76,23 @@ class AuthorSearchEngine:
     async def _make_request(self, url: str, headers: Dict = None) -> Optional[Dict]:
         """Make HTTP request with error handling."""
         if not self.session:
-            self.session = aiohttp.ClientSession()
+            # Create session with SSL context if not exists
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            
+            timeout = aiohttp.ClientTimeout(total=30, connect=10)
+            connector = aiohttp.TCPConnector(
+                ssl=ssl_context,
+                limit=100,
+                limit_per_host=10,
+                enable_cleanup_closed=True
+            )
+            
+            self.session = aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout
+            )
             
         try:
             async with self.session.get(url, headers=headers or {}) as response:
@@ -65,8 +101,17 @@ class AuthorSearchEngine:
                 else:
                     logger.warning(f"Request failed: {url} - Status: {response.status}")
                     return None
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout error for {url}")
+            return None
+        except aiohttp.ClientSSLError as e:
+            logger.error(f"SSL error for {url}: {str(e)}")
+            return None
+        except aiohttp.ClientError as e:
+            logger.error(f"Client error for {url}: {str(e)}")
+            return None
         except Exception as e:
-            logger.error(f"Request error for {url}: {str(e)}")
+            logger.error(f"Unexpected error for {url}: {str(e)}")
             return None
 
     async def _search_semantic_scholar(self, name: str, surname: str) -> List[Dict]:
@@ -271,7 +316,7 @@ class AuthorSearchEngine:
             profile_url = await self._search_author_profile(name, surname, institution)
             
             # Small delay to be respectful
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)
             
             # Step 2: Extract keywords from profile
             keywords = await self._extract_keywords_from_profile(profile_url)
@@ -281,12 +326,37 @@ class AuthorSearchEngine:
             
         except Exception as e:
             logger.error(f"Error getting keywords from Google Scholar: {str(e)}")
+            # Return fallback keywords based on other sources
+            try:
+                # Try to get keywords from other APIs as fallback
+                fallback_keywords = await self.get_author_keywords(name, surname, institution)
+                if fallback_keywords and isinstance(fallback_keywords, list):
+                    extracted_keywords = [item.get('keyword', '') for item in fallback_keywords if isinstance(item, dict) and 'keyword' in item]
+                    return extracted_keywords[:10]  # Limit to first 10
+            except:
+                pass
             return []
 
     async def _search_author_profile(self, name: str, surname: str, institution: str = None):
         """Step 1: Search for author and find their profile URL"""
         if not self.session:
-            self.session = aiohttp.ClientSession()
+            # Create session with SSL context if not exists
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            
+            timeout = aiohttp.ClientTimeout(total=30, connect=10)
+            connector = aiohttp.TCPConnector(
+                ssl=ssl_context,
+                limit=100,
+                limit_per_host=10,
+                enable_cleanup_closed=True
+            )
+            
+            self.session = aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout
+            )
             
         search_query = f"{name} {surname}"
         if institution:
@@ -295,62 +365,116 @@ class AuthorSearchEngine:
         search_url = f"https://scholar.google.com/scholar?q={quote(search_query)}"
         
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
         }
         
-        async with self.session.get(search_url, headers=headers) as response:
-            if response.status != 200:
-                raise Exception(f"Search failed with status {response.status}")
-            
-            html = await response.text()
-            soup = BeautifulSoup(html, 'html.parser')
-            
-            # Look for citation profile links
-            citation_links = soup.find_all('a', href=lambda x: x and 'citations?user=' in x)
-            
-            if not citation_links:
-                raise Exception("No author profile found in search results")
-            
-            # Get the first profile URL
-            profile_href = citation_links[0].get('href')
-            if profile_href.startswith('/'):
-                profile_url = 'https://scholar.google.com' + profile_href
+        try:
+            async with self.session.get(search_url, headers=headers) as response:
+                if response.status != 200:
+                    raise Exception(f"Search failed with status {response.status}")
+                
+                html = await response.text()
+                soup = BeautifulSoup(html, 'html.parser')
+                
+                # Look for citation profile links
+                citation_links = soup.find_all('a', href=lambda x: x and 'citations?user=' in x)
+                
+                if not citation_links:
+                    raise Exception("No author profile found in search results")
+                
+                # Get the first profile URL
+                profile_href = citation_links[0].get('href')
+                if profile_href.startswith('/'):
+                    profile_url = 'https://scholar.google.com' + profile_href
+                else:
+                    profile_url = profile_href
+                
+                return profile_url
+                
+        except asyncio.TimeoutError:
+            raise Exception("Google Scholar search timed out")
+        except aiohttp.ClientSSLError as e:
+            raise Exception(f"SSL connection error to Google Scholar: {str(e)}")
+        except aiohttp.ClientError as e:
+            raise Exception(f"Network error connecting to Google Scholar: {str(e)}")
+        except Exception as e:
+            if "profile found" in str(e) or "failed with status" in str(e):
+                raise e
             else:
-                profile_url = profile_href
-            
-            return profile_url
+                raise Exception(f"Unexpected error searching Google Scholar: {str(e)}")
 
     async def _extract_keywords_from_profile(self, profile_url: str):
         """Step 2: Extract keywords from author's profile page"""
         if not self.session:
-            self.session = aiohttp.ClientSession()
+            # Create session with SSL context if not exists
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            
+            timeout = aiohttp.ClientTimeout(total=30, connect=10)
+            connector = aiohttp.TCPConnector(
+                ssl=ssl_context,
+                limit=100,
+                limit_per_host=10,
+                enable_cleanup_closed=True
+            )
+            
+            self.session = aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout
+            )
             
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
         }
         
-        async with self.session.get(profile_url, headers=headers) as response:
-            if response.status != 200:
-                raise Exception(f"Profile page failed with status {response.status}")
-            
-            html = await response.text()
-            soup = BeautifulSoup(html, 'html.parser')
-            
-            # Look for interests/keywords section
-            interests_div = soup.find('div', {'id': 'gsc_prf_int'})
-            
-            if not interests_div:
-                # Try alternative selectors
-                interests_div = soup.find('div', class_='gsc_prf_il')
-            
-            if not interests_div:
-                return []
-            
-            # Extract keyword links
-            keyword_links = interests_div.find_all('a', class_='gsc_prf_inta')
-            keywords = [link.get_text().strip() for link in keyword_links if link.get_text().strip()]
-            
-            return keywords
+        try:
+            async with self.session.get(profile_url, headers=headers) as response:
+                if response.status != 200:
+                    raise Exception(f"Profile page failed with status {response.status}")
+                
+                html = await response.text()
+                soup = BeautifulSoup(html, 'html.parser')
+                
+                # Look for interests/keywords section
+                interests_div = soup.find('div', {'id': 'gsc_prf_int'})
+                
+                if not interests_div:
+                    # Try alternative selectors
+                    interests_div = soup.find('div', class_='gsc_prf_il')
+                
+                if not interests_div:
+                    return []
+                
+                # Extract keyword links
+                keyword_links = interests_div.find_all('a', class_='gsc_prf_inta')
+                keywords = [link.get_text().strip() for link in keyword_links if link.get_text().strip()]
+                
+                return keywords
+                
+        except asyncio.TimeoutError:
+            raise Exception("Google Scholar profile page timed out")
+        except aiohttp.ClientSSLError as e:
+            raise Exception(f"SSL connection error to Google Scholar profile: {str(e)}")
+        except aiohttp.ClientError as e:
+            raise Exception(f"Network error connecting to Google Scholar profile: {str(e)}")
+        except Exception as e:
+            if "failed with status" in str(e):
+                raise e
+            else:
+                raise Exception(f"Unexpected error extracting keywords from profile: {str(e)}")
 
     async def _scrape_google_scholar(self, name: str, surname: str, institution: Optional[str] = None) -> List[Dict]:
         """Deprecated - use get_author_keywords_from_scholar instead"""
